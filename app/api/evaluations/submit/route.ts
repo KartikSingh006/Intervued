@@ -3,7 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 
 let ai: GoogleGenAI | null = null;
 try {
-  ai = new GoogleGenAI();
+  ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "dummy_key" });
 } catch (e) {
   console.warn("Gemini API Key missing or SDK failed to initialize.");
 }

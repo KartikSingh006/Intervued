@@ -4,7 +4,7 @@ import { GoogleGenAI } from '@google/genai';
 // Initialize Gemini SDK
 let ai: GoogleGenAI | null = null;
 try {
-  ai = new GoogleGenAI(); // Looks for process.env.GEMINI_API_KEY
+  ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "dummy_key" }); // Looks for process.env.GEMINI_API_KEY
 } catch (e) {
   console.warn("Gemini API Key missing or SDK failed to initialize.");
 }
