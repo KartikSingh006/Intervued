@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 
-// Initialize Gemini SDK
 let ai: GoogleGenAI | null = null;
 try {
-  ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "dummy_key" }); // Looks for process.env.GEMINI_API_KEY
+  ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "dummy_key" });
 } catch (e) {
   console.warn("Gemini API Key missing or SDK failed to initialize.");
 }
@@ -19,16 +18,7 @@ export async function POST(request: Request) {
     }
 
     if (!ai) {
-      // Mock fallback if no API key
-      return NextResponse.json({
-        questions: [
-          `Describe your architectural approach to building scalable ${role} systems.`,
-          "Can you walk me through a complex debugging scenario you recently encountered?",
-          "How do you handle technical debt while meeting strict deadlines?",
-          "What is your strategy for optimizing performance in large-scale applications?",
-          "Where do you see the future of this technology stack heading?"
-        ]
-      });
+      return NextResponse.json({ error: 'AI not initialized' }, { status: 500 });
     }
 
     const prompt = `You are a Principal Engineering Manager. Generate exactly 5 highly analytical, progressive interview questions for the role of '${role}'. Return ONLY a JSON array of strings. Do not use markdown blocks.`;

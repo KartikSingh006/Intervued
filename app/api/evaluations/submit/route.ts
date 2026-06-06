@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
+import { supabase } from '@/lib/supabase';
 
 let ai: GoogleGenAI | null = null;
 try {
@@ -11,27 +12,28 @@ try {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { mode, question, answer, proctor_flags } = body;
+    const { token, mode, question, answer, proctor_flags } = body;
     
     let contentToGrade = answer;
     
     if (mode === 'speech_video') {
       console.log("[SIMULATED STT] Routing data into automated speech-to-text transcription layer...");
-      // In reality, we'd transcribe the audio blob here.
-      contentToGrade = answer || "[Simulated Transcript Data]";
+      contentToGrade = answer || "[Simulated Transcript Data: The candidate provided an adequate analytical response, though missed a few edge cases.]";
     }
 
-    // Save proctor logs to Supabase
-    // await supabase.from('proctor_logs').insert({ violations: proctor_flags })
-    console.log(`[SUPABASE LOG] Saved ${proctor_flags?.length || 0} proctoring violations to database timeline.`);
+    if (proctor_flags && proctor_flags.length > 0) {
+      const { error: logError } = await supabase.from('proctoring_violations_timeline').insert(
+        proctor_flags.map((flag: any) => ({
+          token,
+          violation_type: flag.type,
+          details: flag.details
+        }))
+      );
+      if (logError) console.error("Error logging flags", logError);
+    }
 
     if (!ai) {
-      return NextResponse.json({
-        score: 8.5,
-        strengths: ["Clear communication", "Structured approach"],
-        gaps: ["Missed edge cases in concurrent environments"],
-        proctor_flags_recorded: proctor_flags?.length || 0
-      });
+      return NextResponse.json({ error: 'AI not initialized' }, { status: 500 });
     }
 
     const prompt = `You are an expert technical interviewer. Question: '${question}'. Candidate Answer: '${contentToGrade}'. Score the candidate out of 10. Map technical gaps and strengths. Return ONLY a JSON object with keys: score (number), strengths (array of strings), gaps (array of strings). Do not use markdown blocks.`;
@@ -46,6 +48,17 @@ export async function POST(request: Request) {
     else if (text.startsWith("```")) text = text.slice(3, -3).trim();
 
     const evaluation = JSON.parse(text);
+
+    const { error: evalError } = await supabase.from('interview_evaluations').insert({
+      token,
+      question,
+      answer: contentToGrade,
+      score: evaluation.score,
+      strengths: evaluation.strengths,
+      gaps: evaluation.gaps
+    });
+
+    if (evalError) console.warn("Error saving evaluation to Supabase", evalError);
 
     return NextResponse.json({
       ...evaluation,

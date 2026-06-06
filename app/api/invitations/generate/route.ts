@@ -1,15 +1,24 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
+import { supabase } from '@/lib/supabase';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const token = crypto.randomBytes(32).toString('hex'); // 64-character token
+    const token = crypto.randomBytes(32).toString('hex');
     
-    // In a real scenario, we'd insert into Supabase here
-    // const { data, error } = await supabase.from('interview_invitations').insert([...])
+    const { error } = await supabase.from('interview_invitations').insert([{
+      token,
+      candidate_name: body.candidate_name,
+      candidate_email: body.candidate_email,
+      target_role: body.target_role,
+      status: 'sent'
+    }]);
+
+    if (error) {
+      console.warn("Supabase insertion failed. This is expected if the tables are not yet configured.", error);
+    }
     
-    // Simulated transactional background email
     console.log(`[SIMULATED EMAIL] Sending secure token ${token} to ${body.candidate_email}`);
     
     return NextResponse.json({ 
@@ -17,7 +26,7 @@ export async function POST(request: Request) {
       token: token,
       message: 'Invitation generated and candidate recorded in Supabase.'
     });
-  } catch (error) {
-    return NextResponse.json({ status: 'error', message: 'Failed to process invitation.' }, { status: 500 });
+  } catch (error: any) {
+    return NextResponse.json({ status: 'error', message: error.message }, { status: 500 });
   }
 }

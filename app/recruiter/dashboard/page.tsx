@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 
 type InviteStatus = 'sent' | 'in_progress' | 'completed' | 'flagged';
 
 interface ActiveSession {
   id: string;
+  token: string;
   candidate_name: string;
   target_role: string;
   status: InviteStatus;
@@ -16,6 +18,7 @@ interface ActiveSession {
     gaze: 'pass' | 'flag';
     acoustic: 'pass' | 'flag';
   };
+  violations: any[];
 }
 
 export default function RecruiterDashboard() {
@@ -23,26 +26,65 @@ export default function RecruiterDashboard() {
   const [expandedSession, setExpandedSession] = useState<ActiveSession | null>(null);
 
   useEffect(() => {
-    // Mock WebSocket connection to 'interview_invitations' & 'proctoring_violations_timeline'
-    const timer = setTimeout(() => {
-      setSessions([
-        { 
-          id: '1', 
-          candidate_name: 'Alice Turing', 
-          target_role: 'Senior Backend Engineer', 
-          status: 'in_progress',
-          metrics: { identity: 'pass', isolation: 'pass', integrity: 'pass', gaze: 'pass', acoustic: 'pass' }
-        },
-        { 
-          id: '2', 
-          candidate_name: 'Bob Lovelace', 
-          target_role: 'Frontend Architect', 
-          status: 'flagged',
-          metrics: { identity: 'pass', isolation: 'flag', integrity: 'flag', gaze: 'pass', acoustic: 'pass' }
-        }
-      ]);
-    }, 1500);
-    return () => clearTimeout(timer);
+    // Fetch initial data
+    const fetchInitialData = async () => {
+      const { data: invites, error } = await supabase.from('interview_invitations').select('*');
+      if (invites) {
+        const mappedSessions: ActiveSession[] = invites.map(inv => ({
+          id: inv.id,
+          token: inv.token,
+          candidate_name: inv.candidate_name,
+          target_role: inv.target_role,
+          status: inv.status,
+          metrics: { identity: 'pass', isolation: 'pass', integrity: 'pass', gaze: 'pass', acoustic: 'pass' }, // Defaulting for now
+          violations: []
+        }));
+        setSessions(mappedSessions);
+      }
+    };
+    
+    fetchInitialData();
+
+    // Subscribe to realtime changes
+    const channel = supabase.channel('postgres_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_invitations' }, (payload: any) => {
+        setSessions(prev => {
+          if (payload.eventType === 'INSERT') {
+            return [...prev, {
+              id: payload.new.id,
+              token: payload.new.token,
+              candidate_name: payload.new.candidate_name,
+              target_role: payload.new.target_role,
+              status: payload.new.status,
+              metrics: { identity: 'pass', isolation: 'pass', integrity: 'pass', gaze: 'pass', acoustic: 'pass' },
+              violations: []
+            }];
+          }
+          if (payload.eventType === 'UPDATE') {
+            return prev.map(s => s.id === payload.new.id ? { ...s, status: payload.new.status } : s);
+          }
+          return prev;
+        });
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'proctoring_violations_timeline' }, (payload: any) => {
+         setSessions(prev => prev.map(s => {
+           if (s.token === payload.new.token) {
+             const newViolations = [...s.violations, payload.new];
+             const newMetrics = { ...s.metrics };
+             // Map violation types to metrics
+             if (payload.new.violation_type.includes('tab_share_loophole') || payload.new.violation_type.includes('window_blur')) newMetrics.integrity = 'flag';
+             if (payload.new.violation_type.includes('gaze')) newMetrics.gaze = 'flag';
+             
+             return { ...s, violations: newViolations, metrics: newMetrics, status: 'flagged' };
+           }
+           return s;
+         }));
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleGenerateInvite = async () => {
@@ -123,7 +165,7 @@ export default function RecruiterDashboard() {
               key={session.id} 
               onClick={() => setExpandedSession(session)}
               className={`glass-panel p-6 hover:-translate-y-1 transition-transform cursor-pointer relative overflow-hidden ${
-                session.status === 'flagged' ? 'bg-red-500/5 border-red-500/40 shadow-[0_4px_30px_rgba(239,68,68,0.15)]' : ''
+                session.status === 'flagged' ? 'bg-red-50/50 border-red-500 animate-pulse shadow-[0_4px_30px_rgba(239,68,68,0.15)]' : ''
               }`}
             >
               {session.status === 'flagged' && (
@@ -175,7 +217,7 @@ export default function RecruiterDashboard() {
             {/* Left Column: Webcam Frame */}
             <div className="glass-panel p-6 flex flex-col">
               <h3 className="text-xs font-bold opacity-50 mb-3 uppercase tracking-widest flex items-center">
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                 Subject Camera Array
               </h3>
               <div className="flex-1 bg-[#0f172a] rounded-lg overflow-hidden flex items-center justify-center relative border border-black/20 shadow-inner">
@@ -187,7 +229,7 @@ export default function RecruiterDashboard() {
             {/* Right Column: Desktop Share */}
             <div className="glass-panel p-6 flex flex-col">
               <h3 className="text-xs font-bold opacity-50 mb-3 uppercase tracking-widest flex items-center">
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                 Display Surface Track
               </h3>
               <div className="flex-1 bg-[#1e293b] rounded-lg overflow-hidden flex items-center justify-center border border-black/20 relative shadow-inner">
@@ -200,7 +242,7 @@ export default function RecruiterDashboard() {
           {/* Hiring Report Card Matrix */}
           <div className="glass-panel p-8">
             <h3 className="text-lg font-bold mb-6 flex items-center">
-              <svg className="w-5 h-5 mr-2 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+              <svg className="w-5 h-5 mr-2 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
               Integrity Report Card
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -211,18 +253,16 @@ export default function RecruiterDashboard() {
               {renderMetricStatus(expandedSession.metrics.acoustic, 'Acoustic Env')}
             </div>
             
-            {expandedSession.status === 'flagged' && (
-              <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            {expandedSession.status === 'flagged' && expandedSession.violations.length > 0 && (
+              <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg max-h-48 overflow-y-auto">
                 <h4 className="text-red-800 font-bold text-sm mb-2 uppercase tracking-wider">Critical Violation Timeline</h4>
                 <ul className="space-y-2 text-sm font-mono text-red-700">
-                  <li className="flex items-start">
-                    <span className="font-bold mr-3 opacity-60">14:02:12</span>
-                    <span>Window Integrity: displaySurface tracking lost. Focus departed container bounds.</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="font-bold mr-3 opacity-60">14:05:44</span>
-                    <span>Frame Isolation: Multiple background subjects detected in video analysis pipeline.</span>
-                  </li>
+                  {expandedSession.violations.map((v, i) => (
+                    <li key={i} className="flex items-start">
+                      <span className="font-bold mr-3 opacity-60">{new Date(v.created_at || Date.now()).toLocaleTimeString()}</span>
+                      <span>{v.violation_type}: {v.details}</span>
+                    </li>
+                  ))}
                 </ul>
               </div>
             )}

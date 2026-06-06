@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef, use } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, use } from 'react';
+import { supabase } from '@/lib/supabase';
 
 type InterviewMode = 'SPEECH_VIDEO' | 'CODE_BASED' | 'TEXT_BASED';
 
@@ -12,22 +12,25 @@ export default function CandidateSecurityTerminal({ params }: { params: Promise<
   const [unlocked, setUnlocked] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isBlurred, setIsBlurred] = useState(false);
-  const [mode, setMode] = useState<InterviewMode>('TEXT_BASED');
+  const [mode] = useState<InterviewMode>('TEXT_BASED');
   const [questions, setQuestions] = useState<string[]>([]);
   const [currentQ, setCurrentQ] = useState(0);
   const [answer, setAnswer] = useState('');
-  const [proctorFlags, setProctorFlags] = useState<string[]>([]);
+  const [proctorFlags, setProctorFlags] = useState<any[]>([]);
   const [lockdown, setLockdown] = useState<{ active: boolean, reason: string }>({ active: false, reason: '' });
 
   const logProctorViolation = async (violationType: string, details: string) => {
     console.warn(`[PROCTOR EVENT LOGGED]: ${violationType} - ${details}`);
-    setProctorFlags(prev => [...prev, `${new Date().toISOString()} - ${violationType}`]);
+    const flag = { type: violationType, details, time: new Date().toISOString() };
+    setProctorFlags(prev => [...prev, flag]);
+    
     try {
-      await fetch('/api/proctoring/log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, violation_type: violationType, details })
+      await supabase.from('proctoring_violations_timeline').insert({
+        token,
+        violation_type: violationType,
+        details
       });
+      await supabase.from('interview_invitations').update({ status: 'flagged' }).eq('token', token);
     } catch (err) {
       console.error("Failed to log proctoring violation", err);
     }
@@ -57,7 +60,6 @@ export default function CandidateSecurityTerminal({ params }: { params: Promise<
         return;
       }
 
-      // Attach onended listener
       videoTrack.onended = () => {
         setIsBlurred(true);
         triggerLockdown('Screen sharing terminated by user.', 'stop_sharing_terminated');
@@ -73,18 +75,14 @@ export default function CandidateSecurityTerminal({ params }: { params: Promise<
   };
 
   const startGazeTrackingSim = () => {
-    // Simulated Gaze Tracking Analytics Logic Loop
     let divergenceTimer: NodeJS.Timeout;
     
     const simulateGaze = () => {
-      // Randomly simulate a gaze divergence
       if (Math.random() > 0.95) {
-        // Divergence started
         divergenceTimer = setTimeout(() => {
           logProctorViolation('gaze_divergence', 'Eye parameters indicate cross-screen divergence for >4s');
         }, 4000);
       } else {
-        // Gaze is normal, clear any pending divergence flags
         clearTimeout(divergenceTimer);
       }
     };
@@ -104,6 +102,20 @@ export default function CandidateSecurityTerminal({ params }: { params: Promise<
       if (data.questions) setQuestions(data.questions);
     } catch (err) {
       console.error("Failed to fetch questions:", err);
+    }
+  };
+
+  const submitEvaluation = async () => {
+    try {
+      await fetch('/api/evaluations/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, mode, question: questions[currentQ], answer, proctor_flags: [] })
+      });
+      setAnswer('');
+      setCurrentQ(prev => Math.min(prev + 1, questions.length - 1));
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -155,7 +167,7 @@ export default function CandidateSecurityTerminal({ params }: { params: Promise<
     return (
       <div className="fixed inset-0 z-[10000] bg-[var(--foreground)] text-[var(--background)] flex flex-col items-center justify-center p-8">
         <div className="w-24 h-24 mb-8 bg-red-500 rounded-full flex items-center justify-center animate-pulse shadow-[0_0_40px_rgba(239,68,68,0.6)]">
-          <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+          <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
         </div>
         <h1 className="text-4xl font-bold mb-4 uppercase tracking-widest text-red-500">Security Lockdown</h1>
         <p className="text-xl max-w-2xl text-center opacity-80 font-mono">
@@ -270,10 +282,7 @@ export default function CandidateSecurityTerminal({ params }: { params: Promise<
               )}
             </div>
             <button 
-              onClick={() => {
-                setAnswer('');
-                setCurrentQ(prev => Math.min(prev + 1, questions.length - 1));
-              }}
+              onClick={submitEvaluation}
               disabled={isBlurred}
               className="spring-button bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white px-6 py-3 rounded-lg font-semibold shadow-[0_4px_14px_rgba(59,130,246,0.3)] disabled:opacity-50 disabled:cursor-not-allowed"
             >
