@@ -24,9 +24,20 @@ interface ActiveSession {
 export default function RecruiterDashboard() {
   const [sessions, setSessions] = useState<ActiveSession[]>([]);
   const [expandedSession, setExpandedSession] = useState<ActiveSession | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+  
+  // Cognitive Modal Generator State
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteData, setInviteData] = useState({
+    candidate_name: '',
+    candidate_email: '',
+    target_role: 'Full Stack Engineer',
+    time_slot: '2026-06-10T10:00'
+  });
+  const [inviteLoading, setInviteLoading] = useState(false);
 
   useEffect(() => {
-    // Fetch initial data
+    // Fetch initial data securely from Supabase
     const fetchInitialData = async () => {
       const { data: invites, error } = await supabase.from('interview_invitations').select('*');
       if (invites) {
@@ -36,16 +47,17 @@ export default function RecruiterDashboard() {
           candidate_name: inv.candidate_name,
           target_role: inv.target_role,
           status: inv.status,
-          metrics: { identity: 'pass', isolation: 'pass', integrity: 'pass', gaze: 'pass', acoustic: 'pass' }, // Defaulting for now
+          metrics: { identity: 'pass', isolation: 'pass', integrity: 'pass', gaze: 'pass', acoustic: 'pass' },
           violations: []
         }));
         setSessions(mappedSessions);
       }
+      setIsLoaded(true);
     };
     
     fetchInitialData();
 
-    // Subscribe to realtime changes
+    // Subscribe to realtime database changes
     const channel = supabase.channel('postgres_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_invitations' }, (payload: any) => {
         setSessions(prev => {
@@ -71,7 +83,6 @@ export default function RecruiterDashboard() {
            if (s.token === payload.new.token) {
              const newViolations = [...s.violations, payload.new];
              const newMetrics = { ...s.metrics };
-             // Map violation types to metrics
              if (payload.new.violation_type.includes('tab_share_loophole') || payload.new.violation_type.includes('window_blur')) newMetrics.integrity = 'flag';
              if (payload.new.violation_type.includes('gaze')) newMetrics.gaze = 'flag';
              
@@ -87,22 +98,27 @@ export default function RecruiterDashboard() {
     };
   }, []);
 
-  const handleGenerateInvite = async () => {
+  const handleDispatchInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setInviteLoading(true);
     try {
       const res = await fetch('/api/invitations/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          candidate_name: "New Candidate",
-          candidate_email: "test@example.com",
-          target_role: "Full Stack Developer",
-          assessment_mode: "SPEECH_VIDEO"
-        })
+        body: JSON.stringify(inviteData)
       });
       const data = await res.json();
-      alert(`Invitation generated! Token: ${data.token}`);
+      if (res.ok) {
+        setShowInviteModal(false);
+        setInviteData({ candidate_name: '', candidate_email: '', target_role: 'Full Stack Engineer', time_slot: '2026-06-10T10:00' });
+      } else {
+        alert("Failed to send invite: " + data.message);
+      }
     } catch (err) {
       console.error(err);
+      alert("Network exception sending invite.");
+    } finally {
+      setInviteLoading(false);
     }
   };
 
@@ -124,7 +140,7 @@ export default function RecruiterDashboard() {
   );
 
   return (
-    <div className="min-h-screen p-8 relative max-w-7xl mx-auto">
+    <div className="min-h-screen p-8 relative max-w-7xl mx-auto bg-[var(--background)]">
       <header className="mb-10 flex justify-between items-end border-b border-black/5 pb-6">
         <div>
           <h1 className="text-3xl font-bold mb-1 tracking-tight">Integrity Report Matrix</h1>
@@ -132,10 +148,10 @@ export default function RecruiterDashboard() {
         </div>
         <div className="flex items-center space-x-6">
           <button 
-            onClick={handleGenerateInvite} 
+            onClick={() => setShowInviteModal(true)} 
             className="spring-button bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white px-5 py-2.5 rounded-lg font-semibold shadow-[0_4px_14px_rgba(59,130,246,0.3)] text-sm"
           >
-            + Generate Invite
+            + New Invitation
           </button>
           <div className="flex items-center space-x-2 bg-black/5 px-3 py-1.5 rounded-full">
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.8)]"></div>
@@ -144,37 +160,37 @@ export default function RecruiterDashboard() {
         </div>
       </header>
 
-      {/* Empty-Slate View */}
-      {sessions.length === 0 && !expandedSession && (
-        <div className="glass-panel flex flex-col items-center justify-center h-[50vh] text-center border-dashed border-2 border-black/10">
-          <div className="w-16 h-16 bg-black/5 rounded-full mb-4 animate-pulse flex items-center justify-center">
-             <span className="w-6 h-6 border-4 border-t-[var(--accent)] border-black/10 rounded-full animate-spin"></span>
-          </div>
-          <h3 className="text-xl font-semibold mb-2">Terminal Standing By</h3>
-          <p className="opacity-60 max-w-md text-sm">
-            No active candidate sessions. The WebSockets listener channel is open and waiting for real-time Postgres traffic streams.
+      {/* Hollow State Vector Illustration */}
+      {isLoaded && sessions.length === 0 && !expandedSession && (
+        <div className="glass-panel flex flex-col items-center justify-center h-[50vh] text-center border-dashed border-2 border-black/10 bg-white/30">
+          <svg className="w-24 h-24 text-[var(--accent)] opacity-20 mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+          </svg>
+          <h3 className="text-xl font-bold mb-2 text-[var(--foreground)]">Terminal Standing By</h3>
+          <p className="opacity-60 max-w-sm text-sm">
+            No active candidate sessions exist in the network. Construct a live invitation stream link above to initialize a proctoring instance.
           </p>
         </div>
       )}
 
       {/* Matrix Grid */}
-      {sessions.length > 0 && !expandedSession && (
+      {isLoaded && sessions.length > 0 && !expandedSession && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {sessions.map(session => (
             <div 
               key={session.id} 
               onClick={() => setExpandedSession(session)}
               className={`glass-panel p-6 hover:-translate-y-1 transition-transform cursor-pointer relative overflow-hidden ${
-                session.status === 'flagged' ? 'bg-red-50/50 border-red-500 animate-pulse shadow-[0_4px_30px_rgba(239,68,68,0.15)]' : ''
+                session.status === 'flagged' ? 'bg-red-50/50 border-red-500 animate-[pulse_2s_ease-in-out_infinite] shadow-[0_4px_30px_rgba(239,68,68,0.15)]' : ''
               }`}
             >
               {session.status === 'flagged' && (
-                <div className="absolute top-0 left-0 w-1 h-full bg-red-500 animate-pulse"></div>
+                <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
               )}
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h4 className="font-bold text-lg">{session.candidate_name}</h4>
-                  <p className="text-xs font-medium opacity-70 uppercase tracking-wider">{session.target_role}</p>
+                  <h4 className="font-bold text-lg text-[var(--foreground)]">{session.candidate_name}</h4>
+                  <p className="text-xs font-bold opacity-50 uppercase tracking-wider text-[var(--foreground)]">{session.target_role}</p>
                 </div>
                 <span className={`text-[10px] font-bold px-2 py-1 rounded border uppercase tracking-wider ${
                   session.status === 'flagged' ? 'bg-red-100 text-red-800 border-red-200' : 'bg-green-100 text-green-800 border-green-200'
@@ -183,10 +199,10 @@ export default function RecruiterDashboard() {
                 </span>
               </div>
               
-              <div className="aspect-video bg-black/5 rounded-lg flex items-center justify-center border border-black/10 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
-                <span className="opacity-40 text-xs font-mono font-semibold tracking-wider uppercase flex items-center">
-                  <span className={`w-1.5 h-1.5 rounded-full mr-2 ${session.status === 'flagged' ? 'bg-red-500 animate-pulse' : 'bg-green-400'}`}></span> Live Stream Hooked
+              <div className="aspect-video bg-[#0f172a] rounded-lg flex items-center justify-center border border-black/10 relative overflow-hidden shadow-inner">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+                <span className="opacity-60 text-xs font-mono font-bold tracking-wider uppercase flex items-center text-white">
+                  <span className={`w-2 h-2 rounded-full mr-2 ${session.status === 'flagged' ? 'bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)]'}`}></span> Live Stream Hooked
                 </span>
               </div>
             </div>
@@ -196,14 +212,14 @@ export default function RecruiterDashboard() {
 
       {/* Synchronized Dual-Stream Modal */}
       {expandedSession && (
-        <div className="fixed inset-0 z-50 bg-[var(--background)] p-8 flex flex-col overflow-y-auto">
+        <div className="fixed inset-0 z-40 bg-[var(--background)] p-8 flex flex-col overflow-y-auto">
           <header className="flex justify-between items-center mb-6">
             <div>
               <h2 className="text-3xl font-bold flex items-center">
                 <span className={`w-3 h-3 rounded-full mr-3 ${expandedSession.status === 'flagged' ? 'bg-red-500 animate-pulse shadow-[0_0_12px_rgba(239,68,68,0.8)]' : 'bg-green-500 shadow-[0_0_12px_rgba(34,197,94,0.8)]'}`}></span>
                 {expandedSession.candidate_name}
               </h2>
-              <p className="opacity-70 text-sm ml-6 font-mono mt-1">SESSION_ID: {expandedSession.id} • {expandedSession.target_role}</p>
+              <p className="opacity-70 text-sm ml-6 font-mono mt-1 font-bold">SESSION_ID: {expandedSession.id} • {expandedSession.target_role}</p>
             </div>
             <button 
               onClick={() => setExpandedSession(null)} 
@@ -221,8 +237,8 @@ export default function RecruiterDashboard() {
                 Subject Camera Array
               </h3>
               <div className="flex-1 bg-[#0f172a] rounded-lg overflow-hidden flex items-center justify-center relative border border-black/20 shadow-inner">
-                <span className="text-white/20 font-mono text-sm">Tracking Micro-Expressions [WebRTC Hooked]</span>
-                <div className="absolute top-4 right-4 bg-red-500/20 text-red-500 text-xs px-2 py-1 rounded font-mono border border-red-500/30">REC</div>
+                <span className="text-white/30 font-mono text-sm font-bold tracking-wider uppercase">Tracking Micro-Expressions [WebRTC Hooked]</span>
+                <div className="absolute top-4 right-4 bg-red-500/20 text-red-500 text-xs px-2 py-1 rounded font-mono border border-red-500/30 shadow-[0_0_10px_rgba(239,68,68,0.4)] animate-pulse">REC</div>
               </div>
             </div>
             
@@ -233,8 +249,8 @@ export default function RecruiterDashboard() {
                 Display Surface Track
               </h3>
               <div className="flex-1 bg-[#1e293b] rounded-lg overflow-hidden flex items-center justify-center border border-black/20 relative shadow-inner">
-                <span className="text-white/20 text-sm font-mono">Full Desktop Broadcast Syncing...</span>
-                <div className="absolute top-4 right-4 bg-red-500/20 text-red-500 text-xs px-2 py-1 rounded font-mono border border-red-500/30">REC</div>
+                <span className="text-white/30 text-sm font-mono font-bold tracking-wider uppercase">Full Desktop Broadcast Syncing...</span>
+                <div className="absolute top-4 right-4 bg-red-500/20 text-red-500 text-xs px-2 py-1 rounded font-mono border border-red-500/30 shadow-[0_0_10px_rgba(239,68,68,0.4)] animate-pulse">REC</div>
               </div>
             </div>
           </div>
@@ -254,7 +270,7 @@ export default function RecruiterDashboard() {
             </div>
             
             {expandedSession.status === 'flagged' && expandedSession.violations.length > 0 && (
-              <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg max-h-48 overflow-y-auto">
+              <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg max-h-48 overflow-y-auto shadow-inner">
                 <h4 className="text-red-800 font-bold text-sm mb-2 uppercase tracking-wider">Critical Violation Timeline</h4>
                 <ul className="space-y-2 text-sm font-mono text-red-700">
                   {expandedSession.violations.map((v, i) => (
@@ -267,6 +283,51 @@ export default function RecruiterDashboard() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Cognitive Modal Generator */}
+      {showInviteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
+          <form onSubmit={handleDispatchInvite} className="glass-panel w-full max-w-lg p-8 relative shadow-[0_20px_60px_rgba(0,0,0,0.1)]">
+            <button type="button" onClick={() => setShowInviteModal(false)} className="absolute top-4 right-4 opacity-50 hover:opacity-100 transition-opacity">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+            <h2 className="text-2xl font-bold mb-6 text-[var(--foreground)] flex items-center">
+              <span className="w-8 h-8 rounded-lg bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center mr-3">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+              </span>
+              Dispatch Pipeline
+            </h2>
+            
+            <div className="space-y-4 mb-8">
+              <div>
+                <label className="block text-xs font-bold opacity-60 mb-1 uppercase tracking-wider">Candidate Full Name</label>
+                <input required type="text" value={inviteData.candidate_name} onChange={e => setInviteData({...inviteData, candidate_name: e.target.value})} className="w-full bg-white/50 border border-black/10 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-[var(--accent)] focus:outline-none" placeholder="Alan Turing" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold opacity-60 mb-1 uppercase tracking-wider">Candidate Email Address</label>
+                <input required type="email" value={inviteData.candidate_email} onChange={e => setInviteData({...inviteData, candidate_email: e.target.value})} className="w-full bg-white/50 border border-black/10 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-[var(--accent)] focus:outline-none" placeholder="alan@example.com" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold opacity-60 mb-1 uppercase tracking-wider">Targeted Job Specification</label>
+                <select value={inviteData.target_role} onChange={e => setInviteData({...inviteData, target_role: e.target.value})} className="w-full bg-white/50 border border-black/10 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-[var(--accent)] focus:outline-none appearance-none">
+                  <option>Full Stack Engineer</option>
+                  <option>Frontend Architect</option>
+                  <option>Backend Systems Lead</option>
+                  <option>Cloud Infrastructure Manager</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold opacity-60 mb-1 uppercase tracking-wider">Target Time Slot (IST - Asia/Kolkata)</label>
+                <input required type="datetime-local" value={inviteData.time_slot} onChange={e => setInviteData({...inviteData, time_slot: e.target.value})} className="w-full bg-white/50 border border-black/10 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-[var(--accent)] focus:outline-none" />
+              </div>
+            </div>
+
+            <button disabled={inviteLoading} type="submit" className="spring-button w-full bg-[var(--foreground)] text-[var(--background)] font-bold py-3.5 rounded-xl shadow-lg hover:opacity-90 flex items-center justify-center disabled:opacity-50">
+              {inviteLoading ? 'Dispatching Payload...' : 'Authorize Transactional Resend'}
+            </button>
+          </form>
         </div>
       )}
     </div>
