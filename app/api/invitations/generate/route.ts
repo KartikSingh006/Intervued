@@ -3,8 +3,8 @@ import crypto from 'crypto';
 import { supabase } from '@/lib/supabase';
 import { Resend } from 'resend';
 
-// Initialize Resend
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Initialize Resend safely with fallback to prevent build-time crash
+const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_fallback_key_for_build');
 
 export async function POST(request: Request) {
   try {
