@@ -9,6 +9,7 @@ export default function CandidateInterviewPortal({ params }: { params: Promise<{
   const resolvedParams = use(params);
   const token = resolvedParams.token;
   
+  const [isMounted, setIsMounted] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isBlurred, setIsBlurred] = useState(false);
@@ -21,6 +22,10 @@ export default function CandidateInterviewPortal({ params }: { params: Promise<{
   const [timeLeft, setTimeLeft] = useState(600); // 10 minutes per question
 
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const logProctorViolation = async (violationType: string, details: string) => {
     console.warn(`[PROCTOR EVENT LOGGED]: ${violationType} - ${details}`);
@@ -45,6 +50,10 @@ export default function CandidateInterviewPortal({ params }: { params: Promise<{
   };
 
   const verifyHardware = async () => {
+    if (typeof window === "undefined" || typeof navigator === "undefined" || !navigator.mediaDevices) {
+      setErrorMsg("Media Devices API is not supported in this browser environment.");
+      return;
+    }
     try {
       const userMedia = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       if (videoRef.current) {
@@ -87,7 +96,7 @@ export default function CandidateInterviewPortal({ params }: { params: Promise<{
     let divergenceTimer: NodeJS.Timeout;
     
     const simulateGaze = () => {
-      if (Math.random() > 0.95) {
+      if (typeof window !== "undefined" && Math.random() > 0.95) {
         divergenceTimer = setTimeout(() => {
           logProctorViolation('gaze_divergence', 'Eye parameters indicate cross-screen divergence for >4s');
         }, 4000);
@@ -96,8 +105,10 @@ export default function CandidateInterviewPortal({ params }: { params: Promise<{
       }
     };
 
-    const interval = setInterval(simulateGaze, 1000);
-    return () => clearInterval(interval);
+    if (typeof window !== "undefined") {
+      const interval = setInterval(simulateGaze, 1000);
+      return () => clearInterval(interval);
+    }
   };
 
   const fetchQuestions = async () => {
@@ -129,7 +140,6 @@ export default function CandidateInterviewPortal({ params }: { params: Promise<{
     }
   };
 
-  // Timer Effect
   useEffect(() => {
     if (!unlocked || lockdown.active) return;
     const timer = setInterval(() => {
@@ -145,7 +155,7 @@ export default function CandidateInterviewPortal({ params }: { params: Promise<{
   }, [unlocked, lockdown.active, currentQ, questions]);
 
   useEffect(() => {
-    if (!unlocked || lockdown.active) return;
+    if (!isMounted || !unlocked || lockdown.active || typeof window === "undefined") return;
 
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
     
@@ -186,7 +196,9 @@ export default function CandidateInterviewPortal({ params }: { params: Promise<{
       window.removeEventListener('blur', handleWindowBlur);
       window.removeEventListener('focus', handleWindowFocus);
     };
-  }, [unlocked, lockdown.active, token]);
+  }, [isMounted, unlocked, lockdown.active, token]);
+
+  if (!isMounted) return null; // Prevents SSR hydration mismatches and window-is-not-defined crashes
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -197,7 +209,6 @@ export default function CandidateInterviewPortal({ params }: { params: Promise<{
   if (lockdown.active) {
     return (
       <div className="fixed inset-0 z-[10000] bg-[var(--background)] flex items-center justify-center p-8 overflow-hidden">
-        {/* Floating Background Blur Spheres */}
         <div className="absolute top-[10%] left-[20%] w-[35vw] h-[35vw] bg-red-500/10 rounded-full blur-[100px] sphere-a pointer-events-none"></div>
         <div className="absolute top-[5%] right-[15%] w-[25vw] h-[25vw] bg-red-400/10 rounded-full blur-[80px] sphere-b pointer-events-none"></div>
         <div className="absolute bottom-[10%] left-[10%] w-[30vw] h-[30vw] bg-rose-500/10 rounded-full blur-[90px] sphere-c pointer-events-none"></div>
@@ -221,7 +232,6 @@ export default function CandidateInterviewPortal({ params }: { params: Promise<{
   if (!unlocked) {
     return (
       <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-[var(--background)]">
-        {/* Floating Background Blur Spheres */}
         <div className="absolute top-[10%] left-[20%] w-[35vw] h-[35vw] bg-indigo-500/20 rounded-full blur-[100px] sphere-a pointer-events-none"></div>
         <div className="absolute top-[5%] right-[15%] w-[25vw] h-[25vw] bg-teal-400/20 rounded-full blur-[80px] sphere-b pointer-events-none"></div>
         <div className="absolute bottom-[10%] left-[10%] w-[30vw] h-[30vw] bg-violet-500/15 rounded-full blur-[90px] sphere-c pointer-events-none"></div>
@@ -255,7 +265,6 @@ export default function CandidateInterviewPortal({ params }: { params: Promise<{
 
   return (
     <div className="min-h-screen p-8 relative overflow-hidden bg-[var(--background)] flex flex-col">
-      {/* Floating Background Blur Spheres */}
       <div className="absolute top-[10%] left-[20%] w-[35vw] h-[35vw] bg-indigo-500/10 rounded-full blur-[100px] sphere-a pointer-events-none z-0"></div>
       <div className="absolute top-[5%] right-[15%] w-[25vw] h-[25vw] bg-teal-400/10 rounded-full blur-[80px] sphere-b pointer-events-none z-0"></div>
       <div className="absolute bottom-[10%] left-[10%] w-[30vw] h-[30vw] bg-violet-500/10 rounded-full blur-[90px] sphere-c pointer-events-none z-0"></div>
@@ -278,14 +287,12 @@ export default function CandidateInterviewPortal({ params }: { params: Promise<{
       </header>
 
       <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-6 flex-1 relative z-10 w-full">
-        {/* Left Pane: Questions & Answer Console */}
         <div className={`glass-panel p-8 flex-1 flex flex-col relative overflow-hidden bg-white/70 shadow-[0_10px_40px_rgba(0,0,0,0.05)] transition-all duration-300 ${isBlurred ? 'security-blur' : ''}`}>
            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-teal-400"></div>
            
            <div className="flex justify-between items-center mb-6 pb-4 border-b border-black/5">
              <h2 className="text-2xl font-extrabold text-[var(--foreground)]">Question {currentQ + 1} <span className="opacity-40 text-lg">/ {questions.length || 5}</span></h2>
              
-             {/* Countdown Clock Tracker */}
              <div className="bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg font-mono font-bold text-lg border border-indigo-100 flex items-center shadow-sm">
                <svg className="w-5 h-5 mr-2 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                {formatTime(timeLeft)}
@@ -333,9 +340,7 @@ export default function CandidateInterviewPortal({ params }: { params: Promise<{
            </div>
         </div>
 
-        {/* Right Pane: Media Capture Layout */}
         <div className={`w-full lg:w-80 flex flex-col gap-6 transition-all duration-300 ${isBlurred ? 'security-blur' : ''}`}>
-          {/* Webcam Feed Container */}
           <div className="glass-panel p-4 flex flex-col bg-white/50 shadow-md">
             <div className="flex justify-between items-center mb-3">
               <h3 className="text-xs font-bold uppercase tracking-widest opacity-60">Identity Stream</h3>
@@ -353,7 +358,6 @@ export default function CandidateInterviewPortal({ params }: { params: Promise<{
             </div>
           </div>
 
-          {/* Assessment Mode Tracker Container */}
           <div className="glass-panel p-5 flex flex-col bg-white/50 shadow-md flex-1">
              <h3 className="text-xs font-bold uppercase tracking-widest opacity-60 mb-4">Telemetry Matrix</h3>
              
