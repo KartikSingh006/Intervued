@@ -1,13 +1,22 @@
 "use client";
 
-import { useEffect, useState, useRef, use } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 
 type InterviewMode = 'SPEECH_VIDEO' | 'CODE_BASED' | 'TEXT_BASED';
 
-export default function CandidateInterviewPortal({ params }: { params: Promise<{ token: string }> }) {
-  const resolvedParams = use(params);
-  const token = resolvedParams.token;
+export default function CandidateInterviewPortal(props: any) {
+  const [resolvedToken, setResolvedToken] = useState<string>("");
+  
+  useEffect(() => {
+    if (props.params) {
+      Promise.resolve(props.params).then((p: any) => {
+        if (p && p.token) setResolvedToken(p.token);
+      });
+    }
+  }, [props.params]);
+
+  const token = resolvedToken;
   
   const [isMounted, setIsMounted] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
@@ -155,7 +164,7 @@ export default function CandidateInterviewPortal({ params }: { params: Promise<{
   }, [unlocked, lockdown.active, currentQ, questions]);
 
   useEffect(() => {
-    if (!isMounted || !unlocked || lockdown.active || typeof window === "undefined") return;
+    if (!isMounted || !unlocked || lockdown.active || typeof window === "undefined" || !token) return;
 
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
     
@@ -244,7 +253,7 @@ export default function CandidateInterviewPortal({ params }: { params: Promise<{
           <p className="text-sm opacity-70 mb-8 font-medium leading-relaxed text-[var(--foreground)]">
             To proceed, you must grant full access to your webcam, microphone, and entire screen monitor. Strict proctoring constraints are applied.
             <br/><br/>
-            Token: <span className="font-mono bg-black/5 px-2 py-1 rounded text-xs">{token}</span>
+            Token: <span className="font-mono bg-black/5 px-2 py-1 rounded text-xs">{token || "Validating..."}</span>
           </p>
           {errorMsg && (
             <div className="bg-red-50 text-red-700 border border-red-200 p-4 rounded-xl mb-8 text-sm text-left shadow-sm flex items-start">
@@ -254,7 +263,8 @@ export default function CandidateInterviewPortal({ params }: { params: Promise<{
           )}
           <button 
             onClick={verifyHardware} 
-            className="spring-button bg-gradient-to-r from-indigo-600 to-teal-500 hover:from-indigo-700 hover:to-teal-600 text-white w-full py-4 rounded-xl font-bold shadow-[0_10px_20px_rgba(79,70,229,0.3)] transition-all"
+            disabled={!token}
+            className="spring-button bg-gradient-to-r from-indigo-600 to-teal-500 hover:from-indigo-700 hover:to-teal-600 text-white w-full py-4 rounded-xl font-bold shadow-[0_10px_20px_rgba(79,70,229,0.3)] transition-all disabled:opacity-50"
           >
             Authenticate & Initialize Terminal
           </button>
