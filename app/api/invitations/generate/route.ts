@@ -27,6 +27,9 @@ export async function POST(request: Request) {
     
     // Dispatch transactional payload via Brevo
     const magicLink = `https://talentai-serverless-nnxlefp12-kartiksinghdav-6251s-projects.vercel.app/interview/${token}`;
+    const formattedDate = body.time_slot 
+      ? new Date(body.time_slot).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+      : 'As per scheduled slot';
     
     try {
       const sendSmtpEmail = new Brevo.SendSmtpEmail();
@@ -46,7 +49,7 @@ export async function POST(request: Request) {
             
             <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; margin: 25px 0; border: 1px solid #e2e8f0;">
               <p style="margin: 0; font-size: 13px; font-weight: bold; color: #64748b; text-transform: uppercase;">Scheduled Target (IST)</p>
-              <p style="margin: 5px 0 0 0; font-family: monospace; font-size: 16px;">${new Date(body.time_slot).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
+              <p style="margin: 5px 0 0 0; font-family: monospace; font-size: 16px;">${formattedDate}</p>
             </div>
 
             <p style="margin-bottom: 25px; font-size: 14px; color: #475569;">

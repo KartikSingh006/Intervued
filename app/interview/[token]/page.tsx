@@ -1,23 +1,14 @@
 "use client";
 
 import { useEffect, useState, useRef } from 'react';
+import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 type InterviewMode = 'SPEECH_VIDEO' | 'CODE_BASED' | 'TEXT_BASED';
 
-export default function CandidateInterviewPortal(props: any) {
-  const [resolvedToken, setResolvedToken] = useState<string>("");
-  
-  useEffect(() => {
-    if (props.params) {
-      Promise.resolve(props.params).then((p: any) => {
-        if (p && p.token) setResolvedToken(p.token);
-      });
-    }
-  }, [props.params]);
-
-  const token = resolvedToken;
-  
+export default function CandidateInterviewPortal() {
+  const params = useParams();
+  const token = params?.token as string;
   const [isMounted, setIsMounted] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
