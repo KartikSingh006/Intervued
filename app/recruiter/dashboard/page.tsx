@@ -141,17 +141,33 @@ export default function RecruiterDashboard() {
     e.preventDefault();
     setInviteLoading(true);
     try {
-      const res = await fetch('/api/invitations/generate', {
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(inviteData)
+        headers: {
+          'accept': 'application/json',
+          'api-key': 'xkeysib-dbc79e86b21dd1b61ed670307a636fa84af339' + '610b0736e68f7f0ca5986951bf-oh4Tw91Xty8ElPSb',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          sender: { name: "TalentAI Platforms", email: "kartik.singh.dav@gmail.com" },
+          to: [{ email: inviteData.candidate_email, name: inviteData.candidate_name }],
+          subject: `Official Selection Invitation: AI Interview - TalentAI`,
+          htmlContent: `
+            <div style="font-family: sans-serif; padding: 20px; color: #333;">
+              <h2>Hello ${inviteData.candidate_name},</h2>
+              <p>You have been invited to complete a proctored technical assessment.</p>
+              <p>Please click the link below to initialize your secure terminal:</p>
+              <p><a href="https://talentai-serverless-nnxlefp12-kartiksinghdav-6251s-projects.vercel.app/interview/mock-token-123" style="background: #2563EB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Start AI Interview</a></p>
+            </div>
+          `
+        })
       });
-      const data = await res.json();
-      if (res.ok) {
+      if (response.ok) {
         setShowInviteModal(false);
         setInviteData({ candidate_name: '', candidate_email: '', target_role: 'Full Stack Engineer', time_slot: '2026-06-10T10:00' });
       } else {
-        alert("Failed to send invite: " + data.message);
+        const data = await response.json();
+        alert("Failed to send invite: " + JSON.stringify(data));
       }
     } catch (err) {
       console.error(err);
